@@ -97,6 +97,7 @@ const MOCK_PLAYLISTS: SpotifyPlaylist[] = [
 interface SpotifyState {
   isConnected: boolean
   hasActiveDevice: boolean
+  spotifyStatus: number | null
   accessToken: string | null
   tokenExpiresAt: number | null
   clientId: string
@@ -137,6 +138,7 @@ export const useSpotifyStore = create<SpotifyState>()(
     (set, get) => ({
       isConnected: false,
       hasActiveDevice: false,
+      spotifyStatus: null,
       accessToken: null,
       tokenExpiresAt: null,
       clientId: 'c1d9774d754b455b89ebc1c73662d556', // Placeholder default client ID
