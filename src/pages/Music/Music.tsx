@@ -15,7 +15,6 @@ export default function MusicPlayer() {
     volume,
     recentlyPlayed,
     playlists,
-    connectSpotify,
     disconnectSpotify,
     setClientId,
     play,
@@ -25,31 +24,29 @@ export default function MusicPlayer() {
     setVolume,
     setProgress,
     tickProgress,
-    fetchSpotifyData
+    fetchSpotifyData,
+    getAuthUrl,
+    exchangeCode
   } = useSpotifyStore()
 
   const [showConfig, setShowConfig] = useState(false)
   const [inputClientId, setInputClientId] = useState(clientId)
   const [configSaved, setConfigSaved] = useState(false)
 
-  // Handle Spotify Redirect Token on Mount
+  // Handle Spotify Redirect Code on Mount
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash) {
-      const tokenMatch = hash.match(/access_token=([^&]*)/);
-      const expiryMatch = hash.match(/expires_in=([^&]*)/);
-      
-      if (tokenMatch && tokenMatch[1]) {
-        const token = tokenMatch[1];
-        const expiresSec = expiryMatch && expiryMatch[1] ? Number(expiryMatch[1]) : 3600;
-        
-        connectSpotify(token, expiresSec);
-        
-        // Clean up Hash from URL
-        window.history.replaceState(null, '', window.location.pathname);
-      }
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    if (code) {
+      const redirectUri = `${window.location.origin}/music`;
+      exchangeCode(code, redirectUri).then((success) => {
+        if (success) {
+          // Clean up Query Code from URL
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      });
     }
-  }, [connectSpotify]);
+  }, [exchangeCode]);
 
   // Audio Equalizer Simulation bars count
   const eqBars = Array.from({ length: 18 }, (_, i) => i + 1);
@@ -73,22 +70,10 @@ export default function MusicPlayer() {
     }
   }, [isConnected, accessToken, fetchSpotifyData]);
 
-  // Trigger OAuth Implicit Grant Flow
-  const handleConnectSpotify = () => {
+  // Trigger OAuth Authorization Code Flow with PKCE
+  const handleConnectSpotify = async () => {
     const redirectUri = `${window.location.origin}/music`;
-    const scopes = [
-      'user-read-currently-playing',
-      'user-read-playback-state',
-      'user-modify-playback-state',
-      'user-read-recently-played',
-      'playlist-read-private',
-      'playlist-read-collaborative'
-    ].join(' ');
-
-    const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&response_type=token&scope=${encodeURIComponent(scopes)}&show_dialog=true`;
-
+    const authUrl = await getAuthUrl(redirectUri);
     window.location.href = authUrl;
   }
 

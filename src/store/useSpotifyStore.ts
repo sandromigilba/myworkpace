@@ -1,6 +1,25 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+function generateRandomString(length: number): string {
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const values = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(values).map((x) => possible[x % possible.length]).join('');
+}
+
+async function sha256(plain: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(plain);
+  return crypto.subtle.digest('SHA-256', data);
+}
+
+function base64urlencode(a: ArrayBuffer): string {
+  return btoa(String.fromCharCode(...new Uint8Array(a)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 export interface Track {
   id: string
   name: string
@@ -91,6 +110,8 @@ interface SpotifyState {
   connectSpotify: (token: string, expiresIn: number) => void
   disconnectSpotify: () => void
   checkTokenValidity: () => void
+  getAuthUrl: (redirectUri: string) => Promise<string>
+  exchangeCode: (code: string, redirectUri: string) => Promise<boolean>
   
   // Control actions
   play: () => void
@@ -120,6 +141,55 @@ export const useSpotifyStore = create<SpotifyState>()(
       playlists: MOCK_PLAYLISTS,
       
       setClientId: (clientId) => set({ clientId }),
+      
+      getAuthUrl: async (redirectUri) => {
+        const verifier = generateRandomString(64);
+        localStorage.setItem('spotify_code_verifier', verifier);
+        const hashed = await sha256(verifier);
+        const challenge = base64urlencode(hashed);
+        const scopes = [
+          'user-read-currently-playing',
+          'user-read-playback-state',
+          'user-modify-playback-state',
+          'user-read-recently-played',
+          'playlist-read-private',
+          'playlist-read-collaborative'
+        ].join(' ');
+        
+        return `https://accounts.spotify.com/authorize?client_id=${get().clientId}&redirect_uri=${encodeURIComponent(
+          redirectUri
+        )}&response_type=code&scope=${encodeURIComponent(scopes)}&code_challenge_method=S256&code_challenge=${challenge}&show_dialog=true`;
+      },
+      
+      exchangeCode: async (code, redirectUri) => {
+        const verifier = localStorage.getItem('spotify_code_verifier') || '';
+        try {
+          const response = await fetch('https://accounts.spotify.com/api/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              client_id: get().clientId,
+              grant_type: 'authorization_code',
+              code,
+              redirect_uri: redirectUri,
+              code_verifier: verifier,
+            }),
+          });
+          
+          const data = await response.json();
+          if (data.access_token) {
+            get().connectSpotify(data.access_token, data.expires_in);
+            localStorage.removeItem('spotify_code_verifier');
+            return true;
+          }
+          return false;
+        } catch (e) {
+          console.error('Failed to exchange code', e);
+          return false;
+        }
+      },
       
       connectSpotify: (token, expiresIn) => {
         const expiresAt = Date.now() + expiresIn * 1000;
