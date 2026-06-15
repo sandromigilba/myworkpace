@@ -27,7 +27,8 @@ export const useNotesStore = create<NotesState>()(
         {
           id: '1',
           title: 'Selamat Datang di Workspace Anda! 👋',
-          content: 'Ini adalah catatan pertama Anda. Anda dapat mengedit catatan ini atau membuat catatan baru dengan mengklik tombol "Catatan Baru" di sebelah kiri.\n\nMyWorkspace mendukung format teks biasa dan penyimpanan otomatis secara real-time ke dalam browser Anda.',
+          content: 'Ini adalah catatan',
+          // content: 'Ini adalah catatan pertama Anda. Anda dapat mengedit catatan ini atau membuat catatan baru dengan mengklik tombol "Catatan Baru" di sebelah kiri.\n\nMyWorkspace mendukung format teks biasa dan penyimpanan otomatis secara real-time ke dalam browser Anda.',
           dateCreated: new Date().toISOString(),
           dateModified: new Date().toISOString()
         }
