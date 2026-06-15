@@ -27,6 +27,7 @@ export interface Track {
   albumName: string
   albumImageUrl: string
   durationMs: number
+  audioUrl?: string
 }
 
 export interface SpotifyPlaylist {
@@ -44,7 +45,8 @@ const MOCK_TRACKS: Track[] = [
     artist: 'Lofi Chill Cat',
     albumName: 'Pixel Cafe Dreams',
     albumImageUrl: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=300&auto=format&fit=crop&q=80',
-    durationMs: 180000 // 3:00
+    durationMs: 372000, // 6:12
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
   },
   {
     id: 'mock-2',
@@ -52,7 +54,8 @@ const MOCK_TRACKS: Track[] = [
     artist: 'Pastel Breeze',
     albumName: 'Sky Garden Melodies',
     albumImageUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300&auto=format&fit=crop&q=80',
-    durationMs: 210000 // 3:30
+    durationMs: 425000, // 7:05
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
   },
   {
     id: 'mock-3',
@@ -60,7 +63,8 @@ const MOCK_TRACKS: Track[] = [
     artist: 'Synth Keyboardist',
     albumName: 'Retro Cyberspace',
     albumImageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=300&auto=format&fit=crop&q=80',
-    durationMs: 154000 // 2:34
+    durationMs: 302000, // 5:02
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
   },
   {
     id: 'mock-4',
@@ -68,7 +72,8 @@ const MOCK_TRACKS: Track[] = [
     artist: 'Vaporwave Sailor',
     albumName: 'Neon Horizon',
     albumImageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&auto=format&fit=crop&q=80',
-    durationMs: 195000 // 3:15
+    durationMs: 302000, // 5:02
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
   }
 ];
 
@@ -123,6 +128,8 @@ interface SpotifyState {
   tickProgress: () => void
   fetchSpotifyData: () => Promise<void>
 }
+
+let mockAudioElement: HTMLAudioElement | null = null;
 
 export const useSpotifyStore = create<SpotifyState>()(
   persist(
@@ -202,6 +209,9 @@ export const useSpotifyStore = create<SpotifyState>()(
       },
       
       disconnectSpotify: () => {
+        if (mockAudioElement) {
+          mockAudioElement.pause();
+        }
         set({
           accessToken: null,
           tokenExpiresAt: null,
@@ -235,6 +245,17 @@ export const useSpotifyStore = create<SpotifyState>()(
             set({ isPlaying: true });
           }
         } else {
+          const track = get().currentTrack;
+          if (track.audioUrl) {
+            if (!mockAudioElement) {
+              mockAudioElement = new Audio(track.audioUrl);
+            } else if (mockAudioElement.src !== track.audioUrl) {
+              mockAudioElement.src = track.audioUrl;
+            }
+            mockAudioElement.volume = get().volume / 100;
+            mockAudioElement.currentTime = get().progressMs / 1000;
+            mockAudioElement.play().catch(console.error);
+          }
           set({ isPlaying: true });
         }
       },
@@ -253,6 +274,9 @@ export const useSpotifyStore = create<SpotifyState>()(
             set({ isPlaying: false });
           }
         } else {
+          if (mockAudioElement) {
+            mockAudioElement.pause();
+          }
           set({ isPlaying: false });
         }
       },
@@ -270,8 +294,16 @@ export const useSpotifyStore = create<SpotifyState>()(
           // Mock Next
           const currentIndex = MOCK_TRACKS.findIndex((t) => t.id === currentTrack.id);
           const nextIndex = (currentIndex + 1) % MOCK_TRACKS.length;
+          const nextTrack = MOCK_TRACKS[nextIndex];
+          
+          if (mockAudioElement && get().isPlaying) {
+            mockAudioElement.src = nextTrack.audioUrl || '';
+            mockAudioElement.currentTime = 0;
+            mockAudioElement.play().catch(console.error);
+          }
+          
           set((state) => ({
-            currentTrack: MOCK_TRACKS[nextIndex],
+            currentTrack: nextTrack,
             progressMs: 0,
             recentlyPlayed: [state.currentTrack, ...state.recentlyPlayed.filter((t) => t.id !== state.currentTrack.id)].slice(0, 5)
           }));
@@ -292,8 +324,16 @@ export const useSpotifyStore = create<SpotifyState>()(
           const currentIndex = MOCK_TRACKS.findIndex((t) => t.id === currentTrack.id);
           let prevIndex = currentIndex - 1;
           if (prevIndex < 0) prevIndex = MOCK_TRACKS.length - 1;
+          const prevTrack = MOCK_TRACKS[prevIndex];
+          
+          if (mockAudioElement && get().isPlaying) {
+            mockAudioElement.src = prevTrack.audioUrl || '';
+            mockAudioElement.currentTime = 0;
+            mockAudioElement.play().catch(console.error);
+          }
+          
           set((state) => ({
-            currentTrack: MOCK_TRACKS[prevIndex],
+            currentTrack: prevTrack,
             progressMs: 0,
             recentlyPlayed: [state.currentTrack, ...state.recentlyPlayed.filter((t) => t.id !== state.currentTrack.id)].slice(0, 5)
           }));
@@ -308,6 +348,10 @@ export const useSpotifyStore = create<SpotifyState>()(
             method: 'PUT',
             headers: { Authorization: `Bearer ${accessToken}` }
           }).catch(console.error);
+        } else {
+          if (mockAudioElement) {
+            mockAudioElement.volume = volume / 100;
+          }
         }
       },
       
@@ -319,17 +363,30 @@ export const useSpotifyStore = create<SpotifyState>()(
             method: 'PUT',
             headers: { Authorization: `Bearer ${accessToken}` }
           }).catch(console.error);
+        } else {
+          if (mockAudioElement) {
+            mockAudioElement.currentTime = progressMs / 1000;
+          }
         }
       },
       
       tickProgress: () => {
-        const { isPlaying, progressMs, currentTrack } = get();
+        const { isPlaying, isConnected, progressMs, currentTrack } = get();
         if (isPlaying) {
-          const nextProgress = progressMs + 1000;
-          if (nextProgress >= currentTrack.durationMs) {
-            get().next();
+          if (!isConnected && mockAudioElement) {
+            const currentMs = Math.floor(mockAudioElement.currentTime * 1000);
+            if (mockAudioElement.ended || currentMs >= currentTrack.durationMs) {
+              get().next();
+            } else {
+              set({ progressMs: currentMs });
+            }
           } else {
-            set({ progressMs: nextProgress });
+            const nextProgress = progressMs + 1000;
+            if (nextProgress >= currentTrack.durationMs) {
+              get().next();
+            } else {
+              set({ progressMs: nextProgress });
+            }
           }
         }
       },
