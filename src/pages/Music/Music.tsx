@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiRefreshCw, FiExternalLink, FiSettings, FiCheck } from 'react-icons/fi'
+import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiRefreshCw, FiExternalLink, FiSettings, FiCheck, FiMonitor, FiSmartphone, FiSpeaker, FiTv } from 'react-icons/fi'
 import { useSpotifyStore } from '../../store/useSpotifyStore'
 import { EmptySpotifyIllustration } from '../../components/Illustrations'
 
@@ -27,7 +27,11 @@ export default function MusicPlayer() {
     fetchSpotifyData,
     getAuthUrl,
     exchangeCode,
-    hasActiveDevice
+    hasActiveDevice,
+    devices,
+    isFetchingData,
+    spotifyStatus,
+    transferPlayback
   } = useSpotifyStore()
 
   const [showConfig, setShowConfig] = useState(false)
@@ -295,24 +299,111 @@ export default function MusicPlayer() {
                 </div>
 
                 {!hasActiveDevice && (
-                  <div className="p-3 bg-blue-50/50 border-3 border-blue-200 rounded-2xl text-center">
-                    <p className="text-[10px] font-bold text-blue-600 leading-normal">
-                      ℹ️ Sesi Belum Aktif<br/>
-                      Buka aplikasi Spotify di HP/PC & putar lagu untuk sinkronisasi.
-                    </p>
+                  <div className="p-3.5 bg-blue-50/50 border-3 border-blue-200 rounded-2xl text-left flex flex-col gap-2">
+                    {spotifyStatus === 403 ? (
+                      <div>
+                        <h4 className="text-[10px] font-extrabold text-blue-800 flex items-center gap-1">
+                          ⚠️ Akun Premium Diperlukan (403)
+                        </h4>
+                        <p className="text-[9px] text-blue-750 font-semibold leading-normal mt-1">
+                          Spotify membatasi kontrol dan sinkronisasi pemutar hanya untuk akun <strong>Spotify Premium</strong>. 
+                          <br /><br />
+                          Jika Anda memiliki Premium, pastikan email Anda sudah terdaftar di <strong>User Management</strong> pada Developer Dashboard aplikasi Spotify Anda.
+                        </p>
+                      </div>
+                    ) : spotifyStatus === 204 ? (
+                      <div>
+                        <h4 className="text-[10px] font-extrabold text-blue-850 flex items-center gap-1">
+                          ℹ️ Sesi Belum Aktif / Privat
+                        </h4>
+                        <p className="text-[9px] text-blue-750 font-semibold leading-normal mt-1">
+                          Buka aplikasi Spotify di HP/PC Anda dan putar sebuah lagu.
+                          <br /><br />
+                          Pastikan <strong>Sesi Privat (Private Session)</strong> dinonaktifkan di pengaturan aplikasi Spotify Anda.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <h4 className="text-[10px] font-extrabold text-blue-850 flex items-center gap-1">
+                          ℹ️ Sesi Belum Aktif
+                        </h4>
+                        <p className="text-[9px] text-blue-750 font-semibold leading-normal mt-1">
+                          Putar lagu di aplikasi Spotify desktop/HP Anda lalu klik tombol **Sinkronkan Pemutar** di bawah.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
                 
                 <button
                   onClick={fetchSpotifyData}
-                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 border-3 border-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+                  disabled={isFetchingData}
+                  className={`w-full py-2 border-3 border-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    isFetchingData
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-800 shadow-cartoon-sm active:translate-y-0.5'
+                  }`}
                 >
-                  <FiRefreshCw className="animate-spin-slow" /> Sinkronkan Pemutar
+                  <FiRefreshCw className={isFetchingData ? 'animate-spin' : ''} />
+                  {isFetchingData ? 'Menyinkronkan...' : 'Sinkronkan Pemutar'}
                 </button>
+
+                {/* Spotify Device List */}
+                <div className="flex flex-col gap-2 border-t-2 border-slate-200 pt-3 mt-1 text-left">
+                  <h4 className="font-extrabold text-xs text-slate-800 flex items-center gap-1">
+                    Perangkat Spotify Anda:
+                  </h4>
+                  
+                  {devices.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 font-bold text-center py-2">
+                      Tidak ada perangkat ditemukan. Buka Spotify di HP/PC Anda.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                      {devices.map((device) => {
+                        let DeviceIcon = FiMonitor;
+                        const deviceType = device.type.toLowerCase();
+                        if (deviceType === 'smartphone' || deviceType === 'phone') {
+                          DeviceIcon = FiSmartphone;
+                        } else if (deviceType === 'speaker') {
+                          DeviceIcon = FiSpeaker;
+                        } else if (deviceType === 'tv') {
+                          DeviceIcon = FiTv;
+                        }
+                        
+                        return (
+                          <button
+                            key={device.id || device.name}
+                            onClick={() => device.id && transferPlayback(device.id)}
+                            disabled={device.is_active}
+                            className={`flex items-center gap-2 p-1.5 rounded-xl border-2 text-left w-full transition-all ${
+                              device.is_active
+                                ? 'bg-blue-50 border-blue-300 text-blue-800 cursor-default font-bold'
+                                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-800 cursor-pointer active:translate-y-0.5'
+                            }`}
+                          >
+                            <DeviceIcon className={`w-3.5 h-3.5 shrink-0 ${device.is_active ? 'text-blue-700' : 'text-slate-400'}`} />
+                            <div className="min-w-0 flex-1">
+                              <h5 className="font-bold text-[9px] truncate leading-tight">
+                                {device.name}
+                              </h5>
+                              <p className="text-[8px] text-slate-400 font-semibold leading-none mt-0.5">
+                                {device.is_active ? 'Aktif' : 'Klik untuk sinkronkan/putar di sini'}
+                              </p>
+                            </div>
+                            {device.is_active && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse border border-slate-800 shrink-0 mr-1" />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
                 
                 <button
                   onClick={disconnectSpotify}
-                  className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border-3 border-slate-800 rounded-xl text-xs font-bold"
+                  className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border-3 border-slate-800 rounded-xl text-xs font-bold transition-all shadow-cartoon-sm active:translate-y-0.5"
                 >
                   Putuskan Koneksi
                 </button>

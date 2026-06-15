@@ -94,6 +94,16 @@ const MOCK_PLAYLISTS: SpotifyPlaylist[] = [
   }
 ];
 
+export interface SpotifyDevice {
+  id: string | null
+  is_active: boolean
+  is_private_session: boolean
+  is_restricted: boolean
+  name: string
+  type: string
+  volume_percent: number | null
+}
+
 interface SpotifyState {
   isConnected: boolean
   hasActiveDevice: boolean
@@ -101,6 +111,8 @@ interface SpotifyState {
   accessToken: string | null
   tokenExpiresAt: number | null
   clientId: string
+  devices: SpotifyDevice[]
+  isFetchingData: boolean
   
   // Player State (Unified)
   isPlaying: boolean
@@ -119,6 +131,8 @@ interface SpotifyState {
   checkTokenValidity: () => void
   getAuthUrl: (redirectUri: string) => Promise<string>
   exchangeCode: (code: string, redirectUri: string) => Promise<boolean>
+  fetchDevices: () => Promise<void>
+  transferPlayback: (deviceId: string) => Promise<void>
   
   // Control actions
   play: () => void
@@ -142,6 +156,8 @@ export const useSpotifyStore = create<SpotifyState>()(
       accessToken: null,
       tokenExpiresAt: null,
       clientId: 'c1d9774d754b455b89ebc1c73662d556', // Placeholder default client ID
+      devices: [],
+      isFetchingData: false,
       
       isPlaying: false,
       currentTrack: MOCK_TRACKS[0],
@@ -224,7 +240,10 @@ export const useSpotifyStore = create<SpotifyState>()(
           currentTrack: MOCK_TRACKS[0],
           progressMs: 0,
           recentlyPlayed: MOCK_TRACKS.slice(1),
-          playlists: MOCK_PLAYLISTS
+          playlists: MOCK_PLAYLISTS,
+          spotifyStatus: null,
+          devices: [],
+          isFetchingData: false
         });
       },
       
@@ -395,15 +414,59 @@ export const useSpotifyStore = create<SpotifyState>()(
         }
       },
       
+      fetchDevices: async () => {
+        const { isConnected, accessToken } = get();
+        if (!isConnected || !accessToken) return;
+        try {
+          const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          if (res.status === 200) {
+            const data = await res.json();
+            set({ devices: data.devices || [] });
+          } else if (res.status === 401) {
+            get().disconnectSpotify();
+          }
+        } catch (e) {
+          console.error('Failed to fetch devices', e);
+        }
+      },
+      
+      transferPlayback: async (deviceId) => {
+        const { isConnected, accessToken } = get();
+        if (!isConnected || !accessToken) return;
+        try {
+          const res = await fetch('https://api.spotify.com/v1/me/player', {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ device_ids: [deviceId], play: true })
+          });
+          if (res.status === 202 || res.status === 204) {
+            setTimeout(() => {
+              get().fetchDevices();
+              get().fetchSpotifyData();
+            }, 1000);
+          }
+        } catch (e) {
+          console.error('Failed to transfer playback', e);
+        }
+      },
+      
       fetchSpotifyData: async () => {
         const { isConnected, accessToken } = get();
         if (!isConnected || !accessToken) return;
         
+        set({ isFetchingData: true });
         try {
           // Fetch currently playing
           const playerRes = await fetch('https://api.spotify.com/v1/me/player', {
             headers: { Authorization: `Bearer ${accessToken}` }
           });
+          
+          set({ spotifyStatus: playerRes.status });
           
           if (playerRes.status === 200) {
             const playerData = await playerRes.json();
@@ -431,43 +494,53 @@ export const useSpotifyStore = create<SpotifyState>()(
             // Expired
             get().disconnectSpotify();
             return;
+          } else if (playerRes.status === 403) {
+            set({ hasActiveDevice: false });
           }
           
-          // Fetch recently played
-          const recentRes = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=5', {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          });
-          if (recentRes.status === 200) {
-            const recentData = await recentRes.json();
-            const tracks: Track[] = recentData.items.map((item: any) => ({
-              id: item.track.id,
-              name: item.track.name,
-              artist: item.track.artists.map((a: any) => a.name).join(', '),
-              albumName: item.track.album.name,
-              albumImageUrl: item.track.album.images[0]?.url || '',
-              durationMs: item.track.duration_ms
-            }));
-            set({ recentlyPlayed: tracks });
-          }
+          // Proactively fetch devices to sync list
+          await get().fetchDevices();
           
-          // Fetch user playlists
-          const playlistsRes = await fetch('https://api.spotify.com/v1/me/playlists?limit=5', {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          });
-          if (playlistsRes.status === 200) {
-            const playlistsData = await playlistsRes.json();
-            const playlists: SpotifyPlaylist[] = playlistsData.items.map((item: any) => ({
-              id: item.id,
-              name: item.name,
-              trackCount: item.tracks.total,
-              imageUrl: item.images[0]?.url || '',
-              externalUrl: item.external_urls.spotify
-            }));
-            set({ playlists });
+          // Fetch recently played if we got a valid response
+          if (playerRes.status === 200 || playerRes.status === 204) {
+            const recentRes = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=5', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            if (recentRes.status === 200) {
+              const recentData = await recentRes.json();
+              const tracks: Track[] = recentData.items.map((item: any) => ({
+                id: item.track.id,
+                name: item.track.name,
+                artist: item.track.artists.map((a: any) => a.name).join(', '),
+                albumName: item.track.album.name,
+                albumImageUrl: item.track.album.images[0]?.url || '',
+                durationMs: item.track.duration_ms
+              }));
+              set({ recentlyPlayed: tracks });
+            }
+            
+            // Fetch user playlists
+            const playlistsRes = await fetch('https://api.spotify.com/v1/me/playlists?limit=5', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            if (playlistsRes.status === 200) {
+              const playlistsData = await playlistsRes.json();
+              const playlists: SpotifyPlaylist[] = playlistsData.items.map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                trackCount: item.tracks.total,
+                imageUrl: item.images[0]?.url || '',
+                externalUrl: item.external_urls.spotify
+              }));
+              set({ playlists });
+            }
           }
           
         } catch (e) {
           console.error('Failed to fetch data from Spotify API', e);
+          set({ spotifyStatus: 500, hasActiveDevice: false });
+        } finally {
+          set({ isFetchingData: false });
         }
       }
     }),
