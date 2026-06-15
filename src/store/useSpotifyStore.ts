@@ -96,6 +96,7 @@ const MOCK_PLAYLISTS: SpotifyPlaylist[] = [
 
 interface SpotifyState {
   isConnected: boolean
+  hasActiveDevice: boolean
   accessToken: string | null
   tokenExpiresAt: number | null
   clientId: string
@@ -135,6 +136,7 @@ export const useSpotifyStore = create<SpotifyState>()(
   persist(
     (set, get) => ({
       isConnected: false,
+      hasActiveDevice: false,
       accessToken: null,
       tokenExpiresAt: null,
       clientId: 'c1d9774d754b455b89ebc1c73662d556', // Placeholder default client ID
@@ -405,6 +407,7 @@ export const useSpotifyStore = create<SpotifyState>()(
             const playerData = await playerRes.json();
             if (playerData && playerData.item) {
               set({
+                hasActiveDevice: true,
                 isPlaying: playerData.is_playing,
                 progressMs: playerData.progress_ms,
                 volume: playerData.device?.volume_percent || 50,
@@ -417,7 +420,11 @@ export const useSpotifyStore = create<SpotifyState>()(
                   durationMs: playerData.item.duration_ms
                 }
               });
+            } else {
+              set({ hasActiveDevice: false });
             }
+          } else if (playerRes.status === 204) {
+            set({ hasActiveDevice: false });
           } else if (playerRes.status === 401) {
             // Expired
             get().disconnectSpotify();

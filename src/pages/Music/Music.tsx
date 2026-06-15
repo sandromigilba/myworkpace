@@ -26,7 +26,8 @@ export default function MusicPlayer() {
     tickProgress,
     fetchSpotifyData,
     getAuthUrl,
-    exchangeCode
+    exchangeCode,
+    hasActiveDevice
   } = useSpotifyStore()
 
   const [showConfig, setShowConfig] = useState(false)
@@ -292,6 +293,15 @@ export default function MusicPlayer() {
                     Akun Spotify Terhubung 🎉
                   </p>
                 </div>
+
+                {!hasActiveDevice && (
+                  <div className="p-3 bg-blue-50/50 border-3 border-blue-200 rounded-2xl text-center">
+                    <p className="text-[10px] font-bold text-blue-600 leading-normal">
+                      ℹ️ Sesi Belum Aktif<br/>
+                      Buka aplikasi Spotify di HP/PC & putar lagu untuk sinkronisasi.
+                    </p>
+                  </div>
+                )}
                 
                 <button
                   onClick={fetchSpotifyData}
