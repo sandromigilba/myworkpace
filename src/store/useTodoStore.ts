@@ -35,17 +35,9 @@ export const useTodoStore = create<TodoState>()(
         },
         {
           id: '2',
-          text: 'Hubungkan akun Spotify 🎵',
+          text: 'Belajar',
           completed: false,
           priority: 'medium',
-          dueDate: new Date().toISOString().split('T')[0],
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: '3',
-          text: 'Membaca dokumen sitemap 📄',
-          completed: true,
-          priority: 'low',
           dueDate: new Date().toISOString().split('T')[0],
           createdAt: new Date().toISOString()
         }

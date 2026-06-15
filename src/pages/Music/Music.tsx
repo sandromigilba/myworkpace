@@ -1,209 +1,172 @@
 import React, { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
-import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiRefreshCw, FiExternalLink, FiSettings, FiCheck, FiMonitor, FiSmartphone, FiSpeaker, FiTv } from 'react-icons/fi'
-import { useSpotifyStore } from '../../store/useSpotifyStore'
-import { EmptySpotifyIllustration } from '../../components/Illustrations'
+import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiSearch, FiFolder, FiMusic, FiDisc } from 'react-icons/fi'
+import { useMusicStore } from '../../store/useMusicStore'
 
 export default function MusicPlayer() {
   const {
-    isConnected,
-    accessToken,
-    clientId,
+    searchQuery,
+    localTracks,
+    isScanning,
     isPlaying,
     currentTrack,
     progressMs,
     volume,
-    recentlyPlayed,
-    playlists,
-    disconnectSpotify,
-    setClientId,
+    setSearchQuery,
+    openFolder,
+    playTrack,
     play,
     pause,
     next,
     prev,
     setVolume,
     setProgress,
-    tickProgress,
-    fetchSpotifyData,
-    getAuthUrl,
-    exchangeCode,
-    hasActiveDevice,
-    devices,
-    isFetchingData,
-    spotifyStatus,
-    transferPlayback
-  } = useSpotifyStore()
+    tickProgress
+  } = useMusicStore()
 
-  const [showConfig, setShowConfig] = useState(false)
-  const [inputClientId, setInputClientId] = useState(clientId)
-  const [configSaved, setConfigSaved] = useState(false)
+  const [localSearchInput, setLocalSearchInput] = useState(searchQuery)
 
-  // Handle Spotify Redirect Code on Mount
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    if (code) {
-      const redirectUri = `${window.location.origin}/music`;
-      exchangeCode(code, redirectUri).then((success) => {
-        if (success) {
-          // Clean up Query Code from URL
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      });
-    }
-  }, [exchangeCode]);
-
-  // Audio Equalizer Simulation bars count
-  const eqBars = Array.from({ length: 18 }, (_, i) => i + 1);
-
-  // Interval for ticking track progress (1s tick)
+  // Track progress ticker interval (1s)
   useEffect(() => {
     const interval = setInterval(() => {
-      tickProgress();
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [tickProgress]);
+      tickProgress()
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [tickProgress])
 
-  // Interval for fetching real-time Spotify Playback state (every 6 seconds if connected)
+  // Update store search query when local input changes
   useEffect(() => {
-    if (isConnected && accessToken) {
-      fetchSpotifyData();
-      const interval = setInterval(() => {
-        fetchSpotifyData();
-      }, 6000);
-      return () => clearInterval(interval);
-    }
-  }, [isConnected, accessToken, fetchSpotifyData]);
-
-  // Trigger OAuth Authorization Code Flow with PKCE
-  const handleConnectSpotify = async () => {
-    const redirectUri = `${window.location.origin}/music`;
-    const authUrl = await getAuthUrl(redirectUri);
-    window.location.href = authUrl;
-  }
-
-  const saveClientId = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputClientId.trim()) {
-      setClientId(inputClientId.trim());
-      setConfigSaved(true);
-      setTimeout(() => setConfigSaved(false), 2000);
-    }
-  }
+    const delayDebounce = setTimeout(() => {
+      setSearchQuery(localSearchInput)
+    }, 300)
+    return () => clearTimeout(delayDebounce)
+  }, [localSearchInput, setSearchQuery])
 
   // Format Milliseconds to MM:SS
   const formatTime = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    if (!ms || isNaN(ms)) return '0:00'
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
-  // Calculate percentage of track progress
-  const progressPercent = currentTrack.durationMs > 0 ? (progressMs / currentTrack.durationMs) * 100 : 0;
+  const progressPercent = currentTrack && currentTrack.durationMs > 0 
+    ? (progressMs / currentTrack.durationMs) * 100 
+    : 0
 
-  // Handle Progress Bar clicks to Seek song
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    const clickPercent = Math.min(Math.max(clickX / width, 0), 1);
-    const newProgressMs = Math.floor(clickPercent * currentTrack.durationMs);
-    setProgress(newProgressMs);
+    if (!currentTrack || currentTrack.durationMs === 0) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const width = rect.width
+    const clickPercent = Math.min(Math.max(clickX / width, 0), 1)
+    const newProgressMs = Math.floor(clickPercent * currentTrack.durationMs)
+    setProgress(newProgressMs)
   }
+
+  // Filter tracks locally based on search
+  const filteredTracks = localTracks.filter((track) => 
+    track.name.toLowerCase().includes(localSearchInput.toLowerCase())
+  )
 
   return (
-    <div className="flex-1 flex flex-col gap-6 max-w-5xl mx-auto w-full">
-      {/* Settings bar */}
-      <div className="flex justify-between items-center bg-white border-4 border-slate-800 rounded-[24px] p-4 shadow-cartoon-sm">
-        <div className="flex items-center gap-2">
-          <span className={`w-3.5 h-3.5 rounded-full border-2 border-slate-800 ${isConnected ? 'bg-blue-400' : 'bg-brand-primary animate-pulse'}`} />
-          <span className="font-extrabold text-sm text-slate-700">
-            Status: {isConnected ? 'Terhubung ke Spotify Premium' : 'Menggunakan Mode Demo/Simulasi'}
-          </span>
-        </div>
-
+    <div className="flex-1 flex flex-col gap-6 max-w-5xl mx-auto w-full p-2">
+      
+      {/* Folder Control & Search Bar Row */}
+      <div className="flex flex-col sm:flex-row gap-3 bg-white border-4 border-slate-800 rounded-[24px] p-3 shadow-cartoon-sm m-1">
         <button
-          onClick={() => setShowConfig(!showConfig)}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-50 hover:bg-slate-100 border-3 border-slate-800 rounded-xl text-xs font-bold transition-all shadow-cartoon-sm active:translate-y-0.5"
+          onClick={openFolder}
+          disabled={isScanning}
+          className="px-5 py-3 bg-brand-primary hover:bg-brand-primary-dark text-slate-800 font-extrabold border-3 border-slate-800 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-cartoon-sm active:translate-y-0.5 shrink-0"
         >
-          <FiSettings /> {showConfig ? 'Tutup Pengaturan' : 'Client ID Spotify'}
+          <FiFolder className="w-4.5 h-4.5" />
+          {isScanning ? 'Membaca Folder...' : 'Buka Folder Musik'}
         </button>
+
+        <div className="flex-1 flex items-center gap-2 px-4 py-2 bg-blue-50/50 border-3 border-slate-800 rounded-xl">
+          <FiSearch className="text-slate-500 w-5 h-5 shrink-0" />
+          <input
+            type="text"
+            placeholder="Cari lagu di folder Anda..."
+            value={localSearchInput}
+            onChange={(e) => setLocalSearchInput(e.target.value)}
+            className="flex-1 bg-transparent text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none"
+          />
+        </div>
       </div>
 
-      {/* Spotify Config Modal details if toggled */}
-      {showConfig && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white border-4 border-slate-800 rounded-[24px] p-5 shadow-cartoon-sm"
-        >
-          <h4 className="font-extrabold text-slate-800 text-sm mb-2">Konfigurasi Pengembang Spotify</h4>
-          <p className="text-xs text-slate-500 font-semibold mb-4 leading-relaxed">
-            Untuk menggunakan akun Spotify Anda sendiri, daftarkan aplikasi di <strong>Spotify Developer Dashboard</strong>. 
-            Atur Redirect URI ke: <code className="px-1.5 py-0.5 bg-slate-100 border rounded text-blue-600 font-bold">{window.location.origin}/music</code>, lalu masukkan Client ID Anda di bawah.
-          </p>
-          <form onSubmit={saveClientId} className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              placeholder="Masukkan Spotify Client ID..."
-              value={inputClientId}
-              onChange={(e) => setInputClientId(e.target.value)}
-              className="flex-1 px-4 py-2 bg-blue-50 border-3 border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:border-brand-primary"
-            />
-            <button
-              type="submit"
-              className="px-5 py-2 bg-brand-primary hover:bg-brand-primary-dark text-slate-800 font-bold border-3 border-slate-800 rounded-xl text-xs flex items-center justify-center gap-1 shadow-cartoon-sm"
-            >
-              {configSaved ? <><FiCheck /> Tersimpan</> : 'Simpan ID'}
-            </button>
-          </form>
-        </motion.div>
-      )}
-
-      {/* Main Music Grid */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Kolom 1 & 2: Music Player Card (Utama) */}
-        <div className="md:col-span-2 flex flex-col bg-white border-4 border-slate-800 rounded-[30px] p-6 shadow-cartoon items-center justify-center min-h-[480px] m-1.5">
+        <div className="md:col-span-2 flex flex-col bg-white border-4 border-slate-800 rounded-[30px] p-6 shadow-cartoon items-center justify-center min-h-[460px] m-1.5">
           
-          {/* Cover Art Box with Cartoon Shadows */}
-          <div className="relative w-56 h-56 md:w-64 md:h-64 border-4 border-slate-800 rounded-[30px] overflow-hidden shadow-cartoon bg-blue-50 shrink-0 mb-6 group">
-            <img
-              src={currentTrack.albumImageUrl || 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=300&q=80'}
-              alt={currentTrack.albumName}
-              className={`w-full h-full object-cover transition-transform duration-500 ${isPlaying ? 'scale-[1.03]' : ''}`}
-            />
-            {/* Equalizer animation overlays in center when playing */}
-            {isPlaying && (
-              <div className="absolute inset-0 bg-black/40 flex items-end justify-center pb-6 gap-0.5 md:gap-1 px-4">
-                {eqBars.map((bar) => {
-                  const randomDelay = (Math.random() * 0.5 + 0.1).toFixed(2);
-                  return (
-                    <div
-                      key={bar}
-                      className="eq-bar w-1.5 md:w-2 bg-brand-primary rounded-t"
-                      style={{
-                        animationDuration: `${randomDelay}s`,
-                        height: '8px'
-                      }}
-                    />
-                  )
-                })}
+          {/* Spinning Vinyl Record Visualizer */}
+          <div className="relative w-52 h-52 md:w-60 md:h-60 mb-6 shrink-0 flex items-center justify-center">
+            
+            {/* Vinyl Record Plate */}
+            <div 
+              className="w-full h-full rounded-full bg-slate-900 border-8 border-slate-800 flex items-center justify-center relative shadow-cartoon select-none overflow-hidden"
+              style={{
+                animation: isPlaying ? 'spin 8s linear infinite' : 'none'
+              }}
+            >
+              {/* Vinyl Grooves (Concentric Circles) */}
+              <div className="absolute inset-4 rounded-full border border-slate-800/40" />
+              <div className="absolute inset-8 rounded-full border border-slate-800/40" />
+              <div className="absolute inset-12 rounded-full border border-slate-800/40" />
+              <div className="absolute inset-16 rounded-full border border-slate-800/40" />
+              <div className="absolute inset-20 rounded-full border border-slate-800/40" />
+              <div className="absolute inset-24 rounded-full border border-slate-800/40" />
+              <div className="absolute inset-28 rounded-full border border-slate-800/40" />
+
+              {/* Center Record Label */}
+              <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-brand-primary border-4 border-slate-800 flex flex-col items-center justify-center text-center p-1.5 relative z-10">
+                <FiDisc className={`w-8 h-8 text-slate-800 ${isPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '3s' }} />
+                <span className="text-[8px] font-extrabold text-slate-800 truncate w-full mt-1">
+                  {currentTrack ? currentTrack.name : 'No Song'}
+                </span>
               </div>
-            )}
+            </div>
+
+            {/* Tonearm Arm (Jarum Vinyl) */}
+            <div 
+              className="absolute top-[-10px] right-2 w-14 h-24 origin-top-right transition-transform duration-700 pointer-events-none z-20"
+              style={{
+                transform: isPlaying ? 'rotate(15deg)' : 'rotate(-10deg)',
+              }}
+            >
+              {/* Simplified Cartoon Jarum/Tonearm SVG */}
+              <svg className="w-full h-full" viewBox="0 0 60 100" fill="none">
+                {/* Pivot base */}
+                <circle cx="50" cy="10" r="8" fill="#1e293b" stroke="#0f172a" strokeWidth="2" />
+                <circle cx="50" cy="10" r="3" fill="#cbd5e1" />
+                {/* Main metallic arm line */}
+                <path d="M50 10 L25 80 L20 85" stroke="#cbd5e1" strokeWidth="3.5" strokeLinecap="round" />
+                <path d="M50 10 L25 80 L20 85" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+                {/* Cartridge head */}
+                <rect x="12" y="80" width="12" height="15" rx="2" fill="#1e293b" stroke="#0f172a" strokeWidth="1.5" transform="rotate(25 18 85)" />
+                {/* Needle stylus head pointer */}
+                <circle cx="16" cy="92" r="1.5" fill="#facc15" />
+              </svg>
+            </div>
           </div>
 
           {/* Track Text Info */}
           <div className="text-center w-full max-w-sm mb-6">
-            <h3 className="text-xl md:text-2xl font-extrabold text-slate-800 truncate">
-              {currentTrack.name}
+            <h3 className="text-lg md:text-xl font-extrabold text-slate-800 truncate">
+              {currentTrack ? currentTrack.name : 'Tidak ada lagu dimuat'}
             </h3>
-            <p className="text-sm font-bold text-brand-primary-dark mt-1 truncate">
-              {currentTrack.artist}
-            </p>
-            <p className="text-xs text-slate-500 font-semibold mt-0.5 truncate">
-              Album: {currentTrack.albumName}
+            <p className="text-xs font-bold text-slate-500 mt-1 flex items-center justify-center gap-1.5">
+              <span>{currentTrack ? currentTrack.sizeStr : '0.0 MB'}</span>
+              {currentTrack && currentTrack.id !== 'default-1' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                  <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-350 rounded text-slate-600 font-extrabold text-[9px] uppercase">
+                    File Lokal
+                  </span>
+                </>
+              )}
             </p>
           </div>
 
@@ -221,7 +184,7 @@ export default function MusicPlayer() {
             
             <div className="flex justify-between text-xs font-bold text-slate-500">
               <span>{formatTime(progressMs)}</span>
-              <span>{formatTime(currentTrack.durationMs)}</span>
+              <span>{formatTime(currentTrack ? currentTrack.durationMs : 0)}</span>
             </div>
           </div>
 
@@ -229,7 +192,7 @@ export default function MusicPlayer() {
           <div className="flex items-center gap-6 mb-6">
             <button
               onClick={prev}
-              title="Previous Track"
+              title="Sebelumnya"
               className="w-12 h-12 rounded-2xl bg-white hover:bg-slate-50 border-3 border-slate-800 flex items-center justify-center text-slate-800 transition-all hover:scale-105 active:scale-95 shadow-cartoon-sm"
             >
               <FiSkipBack className="w-5 h-5" />
@@ -245,7 +208,7 @@ export default function MusicPlayer() {
 
             <button
               onClick={next}
-              title="Next Track"
+              title="Selanjutnya"
               className="w-12 h-12 rounded-2xl bg-white hover:bg-slate-50 border-3 border-slate-800 flex items-center justify-center text-slate-800 transition-all hover:scale-105 active:scale-95 shadow-cartoon-sm"
             >
               <FiSkipForward className="w-5 h-5" />
@@ -270,211 +233,82 @@ export default function MusicPlayer() {
 
         </div>
 
-        {/* Kolom 3: Connect Spotify Account & Playlists/Recently Played */}
+        {/* Kolom 3: Local Folder Track List */}
         <div className="flex flex-col gap-6">
-          
-          {/* Spotify Connection Panel / Connect Area */}
-          <div className="bg-white border-4 border-slate-800 rounded-[30px] p-6 shadow-cartoon m-1.5">
-            <h3 className="font-extrabold text-slate-800 text-base mb-3">Integrasi Spotify</h3>
-            
-            {!isConnected ? (
-              <div className="flex flex-col items-center text-center p-3">
-                <EmptySpotifyIllustration className="w-28 h-28 mb-3" />
-                <p className="text-xs font-semibold text-slate-550 leading-relaxed mb-4">
-                  Hubungkan dengan Spotify untuk memutar playlist, album favorit, dan mengontrol audio langsung dari workspace.
-                </p>
-                <button
-                  onClick={handleConnectSpotify}
-                  className="w-full py-3 bg-brand-primary hover:bg-brand-primary-dark text-slate-800 font-bold border-4 border-slate-800 rounded-2xl shadow-cartoon-sm transition-all hover:-translate-y-0.5 active:translate-y-0 text-xs flex items-center justify-center gap-2"
-                >
-                  <FiExternalLink /> Hubungkan Spotify
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                <div className="p-3 bg-blue-50 border-3 border-blue-300 rounded-2xl text-center">
-                  <p className="text-xs font-bold text-blue-700">
-                    Akun Spotify Terhubung 🎉
+          <div className="bg-white border-4 border-slate-800 rounded-[30px] p-6 shadow-cartoon m-1.5 flex flex-col gap-4 min-h-[460px] md:h-full overflow-hidden">
+            <div className="flex justify-between items-center">
+              <h3 className="font-extrabold text-slate-800 text-base">
+                Daftar Lagu ({filteredTracks.length}) 📂
+              </h3>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2.5 max-h-[360px] md:max-h-[500px]">
+              {filteredTracks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center gap-2">
+                  <FiMusic className="w-10 h-10 text-slate-300" />
+                  <p className="text-xs text-slate-400 font-bold leading-normal">
+                    {localTracks.length === 1 && localTracks[0].id === 'default-1'
+                      ? 'Silakan buka folder local Anda untuk memuat lagu.'
+                      : 'Lagu tidak ditemukan.'}
                   </p>
                 </div>
-
-                {!hasActiveDevice && (
-                  <div className="p-3.5 bg-blue-50/50 border-3 border-blue-200 rounded-2xl text-left flex flex-col gap-2">
-                    {spotifyStatus === 403 ? (
-                      <div>
-                        <h4 className="text-[10px] font-extrabold text-blue-800 flex items-center gap-1">
-                          ⚠️ Akun Premium Diperlukan (403)
-                        </h4>
-                        <p className="text-[9px] text-blue-750 font-semibold leading-normal mt-1">
-                          Spotify membatasi kontrol dan sinkronisasi pemutar hanya untuk akun <strong>Spotify Premium</strong>. 
-                          <br /><br />
-                          Jika Anda memiliki Premium, pastikan email Anda sudah terdaftar di <strong>User Management</strong> pada Developer Dashboard aplikasi Spotify Anda.
-                        </p>
-                      </div>
-                    ) : spotifyStatus === 204 ? (
-                      <div>
-                        <h4 className="text-[10px] font-extrabold text-blue-850 flex items-center gap-1">
-                          ℹ️ Sesi Belum Aktif / Privat
-                        </h4>
-                        <p className="text-[9px] text-blue-750 font-semibold leading-normal mt-1">
-                          Buka aplikasi Spotify di HP/PC Anda dan putar sebuah lagu.
-                          <br /><br />
-                          Pastikan <strong>Sesi Privat (Private Session)</strong> dinonaktifkan di pengaturan aplikasi Spotify Anda.
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <h4 className="text-[10px] font-extrabold text-blue-850 flex items-center gap-1">
-                          ℹ️ Sesi Belum Aktif
-                        </h4>
-                        <p className="text-[9px] text-blue-750 font-semibold leading-normal mt-1">
-                          Putar lagu di aplikasi Spotify desktop/HP Anda lalu klik tombol **Sinkronkan Pemutar** di bawah.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                <button
-                  onClick={fetchSpotifyData}
-                  disabled={isFetchingData}
-                  className={`w-full py-2 border-3 border-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                    isFetchingData
-                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-800 shadow-cartoon-sm active:translate-y-0.5'
-                  }`}
-                >
-                  <FiRefreshCw className={isFetchingData ? 'animate-spin' : ''} />
-                  {isFetchingData ? 'Menyinkronkan...' : 'Sinkronkan Pemutar'}
-                </button>
-
-                {/* Spotify Device List */}
-                <div className="flex flex-col gap-2 border-t-2 border-slate-200 pt-3 mt-1 text-left">
-                  <h4 className="font-extrabold text-xs text-slate-800 flex items-center gap-1">
-                    Perangkat Spotify Anda:
-                  </h4>
-                  
-                  {devices.length === 0 ? (
-                    <p className="text-[10px] text-slate-400 font-bold text-center py-2">
-                      Tidak ada perangkat ditemukan. Buka Spotify di HP/PC Anda.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto pr-1">
-                      {devices.map((device) => {
-                        let DeviceIcon = FiMonitor;
-                        const deviceType = device.type.toLowerCase();
-                        if (deviceType === 'smartphone' || deviceType === 'phone') {
-                          DeviceIcon = FiSmartphone;
-                        } else if (deviceType === 'speaker') {
-                          DeviceIcon = FiSpeaker;
-                        } else if (deviceType === 'tv') {
-                          DeviceIcon = FiTv;
-                        }
-                        
-                        return (
-                          <button
-                            key={device.id || device.name}
-                            onClick={() => device.id && transferPlayback(device.id)}
-                            disabled={device.is_active}
-                            className={`flex items-center gap-2 p-1.5 rounded-xl border-2 text-left w-full transition-all ${
-                              device.is_active
-                                ? 'bg-blue-50 border-blue-300 text-blue-800 cursor-default font-bold'
-                                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-800 cursor-pointer active:translate-y-0.5'
-                            }`}
-                          >
-                            <DeviceIcon className={`w-3.5 h-3.5 shrink-0 ${device.is_active ? 'text-blue-700' : 'text-slate-400'}`} />
-                            <div className="min-w-0 flex-1">
-                              <h5 className="font-bold text-[9px] truncate leading-tight">
-                                {device.name}
-                              </h5>
-                              <p className="text-[8px] text-slate-400 font-semibold leading-none mt-0.5">
-                                {device.is_active ? 'Aktif' : 'Klik untuk sinkronkan/putar di sini'}
-                              </p>
-                            </div>
-                            {device.is_active && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse border border-slate-800 shrink-0 mr-1" />
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-                
-                <button
-                  onClick={disconnectSpotify}
-                  className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border-3 border-slate-800 rounded-xl text-xs font-bold transition-all shadow-cartoon-sm active:translate-y-0.5"
-                >
-                  Putuskan Koneksi
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Recently Played / Playlist list */}
-          <div className="bg-white border-4 border-slate-800 rounded-[30px] p-6 shadow-cartoon flex-1 flex flex-col gap-4 overflow-hidden m-1.5">
-            <h3 className="font-extrabold text-slate-800 text-base">
-              {isConnected ? 'Playlist Anda' : 'Baru-baru Ini Diputar'}
-            </h3>
-
-            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3 max-h-[220px] md:max-h-[300px]">
-              {isConnected ? (
-                playlists.length === 0 ? (
-                  <p className="text-xs text-slate-400 font-bold text-center py-6">Tidak ada playlist ditemukan</p>
-                ) : (
-                  playlists.map((playlist) => (
-                    <a
-                      key={playlist.id}
-                      href={playlist.externalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-2 border-2 border-slate-100 hover:border-slate-800 rounded-2xl transition-all"
-                    >
-                      <img
-                        src={playlist.imageUrl || 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=100&q=80'}
-                        alt={playlist.name}
-                        className="w-10 h-10 object-cover rounded-lg border border-slate-800"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-xs text-slate-800 truncate">
-                          {playlist.name}
-                        </h4>
-                        <p className="text-[10px] text-slate-450 font-semibold">
-                          {playlist.trackCount} Lagu
-                        </p>
-                      </div>
-                      <FiExternalLink className="text-slate-400 w-4 h-4 shrink-0 mr-1" />
-                    </a>
-                  ))
-                )
               ) : (
-                recentlyPlayed.map((track) => (
-                  <div
+                filteredTracks.map((track) => (
+                  <button
                     key={track.id}
-                    className="flex items-center gap-3 p-2 border-2 border-slate-100 rounded-2xl"
+                    onClick={() => playTrack(track)}
+                    className={`flex items-center gap-3.5 p-2.5 border-2 rounded-2xl text-left w-full transition-all ${
+                      currentTrack && currentTrack.id === track.id
+                        ? 'bg-blue-50 border-blue-300 text-blue-800 font-bold'
+                        : 'bg-white hover:bg-slate-50 border-slate-100 hover:border-slate-800 text-slate-700'
+                    }`}
                   >
-                    <img
-                      src={track.albumImageUrl || 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=100&q=80'}
-                      alt={track.name}
-                      className="w-10 h-10 object-cover rounded-lg border border-slate-800"
-                    />
+                    <div className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center shrink-0 ${
+                      currentTrack && currentTrack.id === track.id 
+                        ? 'bg-blue-100 border-blue-400 text-blue-800' 
+                        : 'bg-slate-50 border-slate-800 text-slate-600'
+                    }`}>
+                      <FiMusic className="w-4 h-4" />
+                    </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-xs text-slate-800 truncate">
+                      <h4 className="font-bold text-xs truncate">
                         {track.name}
                       </h4>
-                      <p className="text-[10px] text-brand-primary-dark font-bold truncate">
-                        {track.artist}
-                      </p>
+                      <div className="flex items-center gap-1.5 text-[9px] opacity-75 font-semibold mt-0.5">
+                        <span>{track.sizeStr}</span>
+                        {track.durationMs > 0 && (
+                          <>
+                            <span className="w-1 h-1 rounded-full bg-current" />
+                            <span>{formatTime(track.durationMs)}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
-          </div>
 
+            <div className="pt-3 border-t-2 border-slate-100 text-[10px] text-slate-400 font-semibold leading-relaxed">
+              * Browser FileSystem Access memuat file musik Anda secara lokal langsung dari komputer. File Anda aman dan tidak diunggah ke internet.
+            </div>
+          </div>
         </div>
 
       </div>
+      
+      {/* CSS keyframes animation definition for vinyl spin */}
+      <style>{`
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
+
     </div>
   )
 }

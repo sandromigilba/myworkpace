@@ -5,7 +5,7 @@ import { FiPlus, FiMusic, FiClock, FiFileText, FiCheckSquare, FiPlay, FiPause, F
 import { useThemeStore } from '../../store/useThemeStore'
 import { useNotesStore } from '../../store/useNotesStore'
 import { useTodoStore } from '../../store/useTodoStore'
-import { useSpotifyStore } from '../../store/useSpotifyStore'
+import { useMusicStore } from '../../store/useMusicStore'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -14,7 +14,7 @@ export default function Dashboard() {
   const { userName, userAvatar } = useThemeStore()
   const { notes, createNote } = useNotesStore()
   const { todos, addTodo } = useTodoStore()
-  const { isPlaying, currentTrack, play, pause, isConnected } = useSpotifyStore()
+  const { isPlaying, currentTrack, play, pause } = useMusicStore()
 
   // Local Clock state for mini clock widget
   const [time, setTime] = useState(new Date())
@@ -187,7 +187,7 @@ export default function Dashboard() {
               <FiMusic />
             </div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase">
-              {isConnected ? 'Spotify Connect' : 'Mock Player'}
+              iTunes Player
             </span>
           </div>
           
