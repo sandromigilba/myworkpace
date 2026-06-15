@@ -27,17 +27,9 @@ export const useTodoStore = create<TodoState>()(
       todos: [
         {
           id: '1',
-          text: 'Pelajari fitur MyWorkspace 🚀',
+          text: 'contoh todo-list 🚀',
           completed: false,
           priority: 'high',
-          dueDate: new Date().toISOString().split('T')[0],
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: '2',
-          text: 'Belajar',
-          completed: false,
-          priority: 'medium',
           dueDate: new Date().toISOString().split('T')[0],
           createdAt: new Date().toISOString()
         }
